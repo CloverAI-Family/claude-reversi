@@ -53,6 +53,16 @@ AI 讀 db → 計算翻轉 → 寫回 db（turn → 你）
 - Claude Code 在終端機或 IDE 中運行
 - Artifact 在你自己的帳號下開啟
 
+## 截圖
+
+棋局終盤——黑子 35 : 白子 25：
+
+![棋局畫面](screenshots/game-board.png)
+
+Claude Code 操作畫面——AI 讀取棋盤、計算落子、寫回結果：
+
+![AI 操作流程](screenshots/ai-workflow.png)
+
 ---
 
 <details>
