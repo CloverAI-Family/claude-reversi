@@ -1,0 +1,566 @@
+<title>黑白棋</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap">
+<style>
+:root {
+  --bg: #1a2a1a;
+  --fg: #e8e0cc;
+  --board: #1e6c1e;
+  --board-line: #155a15;
+  --board-edge: #0d3d0d;
+  --accent: #c8a844;
+  --muted: #7a8a6a;
+  --panel: #243024;
+  --status-bg: #1c281c;
+  --hint: rgba(255,255,255,0.22);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f0ead8;
+    --fg: #1a1a0a;
+    --board: #2d7a2d;
+    --board-line: #1e5a1e;
+    --board-edge: #0d4a0d;
+    --accent: #8a6010;
+    --muted: #5a6a4a;
+    --panel: #e4dcc8;
+    --status-bg: #ece4d0;
+    --hint: rgba(255,255,255,0.32);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f0ead8; --fg: #1a1a0a;
+  --board: #2d7a2d; --board-line: #1e5a1e; --board-edge: #0d4a0d;
+  --accent: #8a6010; --muted: #5a6a4a; --panel: #e4dcc8; --status-bg: #ece4d0;
+  --hint: rgba(255,255,255,0.32); color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: 'Noto Serif TC', 'Noto Serif', Georgia, serif;
+  min-height: 100%; display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding-block: 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1 { font-size: 1.35rem; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; }
+
+.scoreboard {
+  display: flex; gap: 28px; align-items: center;
+}
+.score-item { display: flex; align-items: center; gap: 8px; }
+.score-stone {
+  width: 20px; height: 20px; border-radius: 50%;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.55);
+  flex-shrink: 0;
+}
+.score-stone.black { background: radial-gradient(circle at 35% 30%, #666, #080808); }
+.score-stone.white { background: radial-gradient(circle at 35% 30%, #ffffff, #cccccc); border: 1px solid #bbb; }
+.score-count { font-weight: 700; font-size: 1.1rem; color: var(--fg); }
+.score-label { font-size: 0.75rem; color: var(--muted); }
+
+#status {
+  background: var(--status-bg); border: 1px solid var(--board-line); border-radius: 8px;
+  padding: 9px 22px; font-size: 0.88rem; color: var(--fg); text-align: center;
+  min-width: min(300px, 90vw); min-height: 40px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* 棋盤 */
+#board {
+  display: grid; grid-template-columns: repeat(8, 1fr);
+  background: var(--board-line);
+  border: 4px solid var(--board-edge);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07);
+  width: min(480px, calc(100vw - 40px));
+  aspect-ratio: 1;
+  gap: 1px; padding: 1px;
+  user-select: none;
+}
+.cell {
+  background: var(--board);
+  display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 1; position: relative; cursor: pointer;
+  transition: background 0.12s;
+}
+.cell:hover { background: #226a22; }
+.cell.no-action { cursor: default; }
+.cell.no-action:hover { background: var(--board); }
+
+/* 合法落子提示點 */
+.cell.legal::after {
+  content: '';
+  position: absolute;
+  width: 28%; height: 28%;
+  border-radius: 50%;
+  background: var(--hint);
+  pointer-events: none;
+}
+
+/* 棋子 */
+.stone-wrap {
+  width: 80%; height: 80%;
+  position: relative;
+}
+.stone {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  position: absolute; inset: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+}
+.stone.black { background: radial-gradient(circle at 35% 30%, #666, #060606); }
+.stone.white { background: radial-gradient(circle at 35% 30%, #ffffff, #d0d0d0); border: 1px solid #bbb; }
+
+/* 最後落子標記 */
+.stone.last-move::after {
+  content: '';
+  position: absolute;
+  width: 24%; height: 24%;
+  border-radius: 50%;
+  top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(200,168,68,0.75);
+}
+
+/* 翻棋動畫 */
+@keyframes flip-out { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes flip-in  { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.stone.flip-out { animation: flip-out 0.18s ease-in forwards; }
+.stone.flip-in  { animation: flip-in  0.18s ease-out forwards; }
+
+.controls { display: flex; gap: 10px; }
+button {
+  background: var(--accent); color: #1a1a0a; border: none; border-radius: 6px;
+  padding: 8px 22px; font-family: inherit; font-size: 0.88rem; cursor: pointer;
+  transition: opacity 0.12s; letter-spacing: 0.04em; font-weight: 700;
+}
+button:hover { opacity: 0.82; } button:active { opacity: 0.65; }
+button.sec { background: var(--panel); color: var(--fg); border: 1px solid var(--board-line); font-weight: 400; }
+</style>
+
+<h1>黑白棋</h1>
+
+<div class="scoreboard">
+  <div class="score-item">
+    <div class="score-stone black"></div>
+    <span class="score-count" id="sc-black">2</span>
+    <span class="score-label">黑</span>
+  </div>
+  <span style="color:var(--muted);font-size:0.85rem">vs</span>
+  <div class="score-item">
+    <div class="score-stone white"></div>
+    <span class="score-count" id="sc-white">2</span>
+    <span class="score-label">白</span>
+  </div>
+</div>
+
+<div id="status">選擇你的棋子</div>
+
+<div id="board"></div>
+
+<div class="controls" id="controls-pick">
+  <button id="btn-black">先手（黑子）</button>
+  <button class="sec" id="btn-white">後手（白子）</button>
+</div>
+<div class="controls" id="controls-game" style="display:none">
+  <button id="btn-new">新局</button>
+  <button class="sec" id="btn-resign" hidden>投降</button>
+</div>
+
+<script>
+const N = 8;
+const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const pickEl = document.getElementById('controls-pick');
+const gameEl = document.getElementById('controls-game');
+const scBlack = document.getElementById('sc-black');
+const scWhite = document.getElementById('sc-white');
+
+let board, gameOver, myTurn, waiting, animating;
+let playerColor = 0;
+let localSeq = 0;
+let dbRef = null;
+let unsub = null;
+let lastMove = null;
+
+function aiColor() { return 3 - playerColor; }
+
+// ── 遊戲邏輯 ────────────────────────────────────────
+function initBoard() {
+  board = Array.from({length: N}, () => new Array(N).fill(0));
+  board[3][3] = 2; board[3][4] = 1;
+  board[4][3] = 1; board[4][4] = 2;
+}
+
+function getFlips(b, r, c, color) {
+  if (b[r][c] !== 0) return [];
+  const opp = 3 - color;
+  const result = [];
+  for (const [dr, dc] of DIRS) {
+    const line = [];
+    let nr = r + dr, nc = c + dc;
+    while (nr >= 0 && nr < N && nc >= 0 && nc < N && b[nr][nc] === opp) {
+      line.push([nr, nc]);
+      nr += dr; nc += dc;
+    }
+    if (line.length > 0 && nr >= 0 && nr < N && nc >= 0 && nc < N && b[nr][nc] === color) {
+      for (const pos of line) result.push(pos);
+    }
+  }
+  return result;
+}
+
+function getLegalMoves(b, color) {
+  const moves = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (getFlips(b, r, c, color).length > 0)
+        moves.push([r, c]);
+  return moves;
+}
+
+function countStones(b) {
+  let black = 0, white = 0;
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (b[r][c] === 1) black++;
+      else if (b[r][c] === 2) white++;
+    }
+  return {black, white};
+}
+
+function isGameOver(b) {
+  return getLegalMoves(b, 1).length === 0 && getLegalMoves(b, 2).length === 0;
+}
+
+// ── DOM ─────────────────────────────────────────────
+function buildCells() {
+  boardEl.innerHTML = '';
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      const wrap = document.createElement('div');
+      wrap.className = 'stone-wrap';
+      cell.appendChild(wrap);
+      cell.addEventListener('click', onCellClick);
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function getCell(r, c) {
+  return boardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+}
+
+function getStone(r, c) {
+  return getCell(r, c).querySelector('.stone');
+}
+
+function setStone(r, c, color, isLast) {
+  const cell = getCell(r, c);
+  const wrap = cell.querySelector('.stone-wrap');
+  let stone = wrap.querySelector('.stone');
+  if (!stone) {
+    stone = document.createElement('div');
+    wrap.appendChild(stone);
+  }
+  stone.className = 'stone ' + (color === 1 ? 'black' : 'white') + (isLast ? ' last-move' : '');
+}
+
+function removeStone(r, c) {
+  const wrap = getCell(r, c).querySelector('.stone-wrap');
+  const stone = wrap.querySelector('.stone');
+  if (stone) stone.remove();
+}
+
+function renderBoard(hl = null) {
+  const canMove = !gameOver && myTurn && !waiting && !animating && playerColor;
+  const legal = canMove ? getLegalMoves(board, playerColor).map(([r,c]) => `${r},${c}`) : [];
+
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const cell = getCell(r, c);
+      const v = board[r][c];
+      const wrap = cell.querySelector('.stone-wrap');
+      const isLast = hl && hl[0] === r && hl[1] === c;
+
+      if (v === 0) {
+        const stone = wrap.querySelector('.stone');
+        if (stone) stone.remove();
+      } else {
+        let stone = wrap.querySelector('.stone');
+        if (!stone) { stone = document.createElement('div'); wrap.appendChild(stone); }
+        stone.className = 'stone ' + (v === 1 ? 'black' : 'white') + (isLast ? ' last-move' : '');
+      }
+
+      const isLegal = legal.includes(`${r},${c}`);
+      cell.classList.toggle('legal', isLegal);
+      cell.classList.toggle('no-action', !canMove && !(isLegal));
+    }
+  }
+
+  const {black, white} = countStones(board);
+  scBlack.textContent = black;
+  scWhite.textContent = white;
+}
+
+function flipAnimation(flips, toColor) {
+  return new Promise(resolve => {
+    let done = 0;
+    if (flips.length === 0) { resolve(); return; }
+    animating = true;
+    flips.forEach(([r, c], i) => {
+      const wrap = getCell(r, c).querySelector('.stone-wrap');
+      let stone = wrap.querySelector('.stone');
+      if (!stone) { stone = document.createElement('div'); wrap.appendChild(stone); }
+
+      setTimeout(() => {
+        stone.classList.remove('flip-out', 'flip-in');
+        stone.classList.add('flip-out');
+
+        setTimeout(() => {
+          stone.className = 'stone ' + (toColor === 1 ? 'black' : 'white') + ' flip-in';
+          setTimeout(() => {
+            stone.classList.remove('flip-in');
+            done++;
+            if (done === flips.length) { animating = false; resolve(); }
+          }, 200);
+        }, 180);
+      }, i * 55);
+    });
+  });
+}
+
+// ── DB ──────────────────────────────────────────────
+function boardToStr(b) { return b.map(r => r.join('')).join('|'); }
+function strToBoard(s) { return s.split('|').map(r => r.split('').map(Number)); }
+
+async function saveState(lr, lc, nextTurn) {
+  if (!dbRef || !playerColor) return;
+  try {
+    await dbRef.doc('reversi/state').set({
+      board: boardToStr(board),
+      turn: nextTurn,
+      player_color: playerColor,
+      seq: localSeq,
+      last_r: lr,
+      last_c: lc,
+    });
+  } catch(_) {}
+}
+
+function setupListener() {
+  if (unsub) { unsub(); unsub = null; }
+  if (!dbRef) return;
+  unsub = dbRef.doc('reversi/state').onSnapshot(snap => {
+    if (!snap.exists) return;
+    const d = snap.data();
+    if (!d || !d.board) return;
+    const dbSeq = Number(d.seq || 0);
+    if (waiting && !gameOver && playerColor && Number(d.turn) === playerColor && dbSeq >= localSeq) {
+      localSeq = dbSeq;
+      const newBoard = strToBoard(String(d.board));
+      const lr = Number(d.last_r), lc = Number(d.last_c);
+
+      // 找翻轉的棋子
+      const flips = [];
+      for (let r = 0; r < N; r++)
+        for (let c = 0; c < N; c++)
+          if (board[r][c] !== 0 && board[r][c] !== newBoard[r][c])
+            flips.push([r, c]);
+
+      // AI 落子（立即顯示）
+      if (lr >= 0) setStone(lr, lc, aiColor(), true);
+
+      // 翻棋動畫，然後結算
+      flipAnimation(flips, playerColor).then(() => {
+        board = newBoard;
+        lastMove = lr >= 0 ? [lr, lc] : null;
+        waiting = false;
+        finishTurn(lastMove, false);
+      });
+    }
+  }, () => {});
+}
+
+function finishTurn(hl, isMyMove) {
+  const myLegal = getLegalMoves(board, playerColor);
+  const aiLegal = getLegalMoves(board, aiColor());
+
+  if (isGameOver(board)) {
+    gameOver = true; myTurn = false;
+    renderBoard(hl);
+    showResult();
+    return;
+  }
+
+  if (isMyMove) {
+    // 剛下完我的棋，看 AI 有沒有合法落子
+    if (aiLegal.length === 0) {
+      // AI 跳過，繼續我的回合
+      myTurn = true;
+      const myN = playerColor === 1 ? '黑子' : '白子';
+      statusEl.textContent = `對方沒有合法落子，${myN}繼續…`;
+      renderBoard(hl);
+      localSeq = Date.now();
+      saveState(-1, -1, playerColor); // turn 回到我，讓 AI 知道跳過了
+    } else {
+      // 等 AI
+      waiting = true;
+      const aiN = aiColor() === 1 ? '黑子' : '白子';
+      statusEl.textContent = `等${aiN}回應…（去對話視窗說「下好了」）`;
+      renderBoard(hl);
+      saveState(hl ? hl[0] : -1, hl ? hl[1] : -1, aiColor());
+    }
+  } else {
+    // 剛收到 AI 的棋，看我有沒有合法落子
+    if (myLegal.length === 0) {
+      // 我跳過，繼續等 AI
+      waiting = true;
+      const aiN = aiColor() === 1 ? '黑子' : '白子';
+      statusEl.textContent = `你沒有合法落子，${aiN}繼續…`;
+      renderBoard(hl);
+      localSeq = Date.now();
+      saveState(-1, -1, aiColor());
+    } else {
+      myTurn = true;
+      const myN = playerColor === 1 ? '黑子' : '白子';
+      statusEl.textContent = `輪到${myN}（你）落子…`;
+      renderBoard(hl);
+    }
+  }
+}
+
+function showResult() {
+  const {black, white} = countStones(board);
+  let msg;
+  if (black > white) msg = `遊戲結束！黑子勝（黑 ${black}：白 ${white}）`;
+  else if (white > black) msg = `遊戲結束！白子勝（黑 ${black}：白 ${white}）`;
+  else msg = `遊戲結束！平局（${black} : ${white}）`;
+  statusEl.textContent = msg;
+  document.getElementById('btn-resign').hidden = true;
+  gameEl.style.display = '';
+}
+
+// ── 玩家落子 ────────────────────────────────────────
+async function onCellClick(e) {
+  if (!playerColor || gameOver || waiting || !myTurn || animating) return;
+  const r = Number(e.currentTarget.dataset.r);
+  const c = Number(e.currentTarget.dataset.c);
+  const flips = getFlips(board, r, c, playerColor);
+  if (flips.length === 0) return;
+
+  myTurn = false; animating = true;
+
+  // 放棋子
+  board[r][c] = playerColor;
+  setStone(r, c, playerColor, true);
+
+  // 翻棋動畫
+  for (const [fr, fc] of flips) board[fr][fc] = playerColor;
+  await flipAnimation(flips, playerColor);
+  animating = false;
+
+  lastMove = [r, c];
+  localSeq = Date.now();
+  renderBoard(lastMove);
+  finishTurn(lastMove, true);
+}
+
+// ── 初始化 ───────────────────────────────────────────
+function showPicker() {
+  pickEl.style.display = ''; gameEl.style.display = 'none';
+  playerColor = 0; gameOver = false; myTurn = false; waiting = false; animating = false;
+  statusEl.textContent = '選擇你的棋子';
+  initBoard(); renderBoard();
+}
+
+async function initGame(color) {
+  playerColor = color;
+  initBoard(); gameOver = false; lastMove = null; animating = false;
+  localSeq = Date.now();
+  pickEl.style.display = 'none'; gameEl.style.display = '';
+  document.getElementById('btn-resign').hidden = false;
+  const myN = color === 1 ? '黑子' : '白子';
+  const aiN = color === 1 ? '白子' : '黑子';
+  if (color === 1) {
+    myTurn = true; waiting = false;
+    statusEl.textContent = `等${myN}（你）落子…`;
+    renderBoard();
+    await saveState(-1, -1, playerColor);
+  } else {
+    myTurn = false; waiting = true;
+    statusEl.textContent = `等${aiN}先落子…（去對話視窗說「下好了」）`;
+    renderBoard();
+    await saveState(-1, -1, aiColor());
+  }
+}
+
+// ── 啟動 ────────────────────────────────────────────
+async function boot() {
+  buildCells();
+  initBoard(); renderBoard();
+  dbRef = await window.claude?.use?.('db') || null;
+  setupListener();
+
+  if (dbRef) {
+    try {
+      const snap = await dbRef.doc('reversi/state').get();
+      if (snap.exists) {
+        const d = snap.data();
+        if (d && d.board && d.player_color) {
+          const rows = d.board.split('|');
+          if (rows.length === N) {
+            playerColor = Number(d.player_color);
+            board = strToBoard(d.board);
+            lastMove = Number(d.last_r) >= 0 ? [Number(d.last_r), Number(d.last_c)] : null;
+            localSeq = Number(d.seq || 0);
+            const turn = Number(d.turn);
+            gameOver = isGameOver(board); animating = false;
+            pickEl.style.display = 'none'; gameEl.style.display = '';
+            if (gameOver) {
+              myTurn = false; waiting = false;
+              renderBoard(lastMove); showResult();
+            } else {
+              myTurn = turn === playerColor;
+              waiting = turn === aiColor();
+              const myN = playerColor === 1 ? '黑子' : '白子';
+              const aiN = playerColor === 1 ? '白子' : '黑子';
+              if (waiting) {
+                statusEl.textContent = `等${aiN}回應…（去對話視窗說「下好了」）`;
+              } else {
+                statusEl.textContent = `等${myN}（你）落子…`;
+              }
+              renderBoard(lastMove);
+            }
+            return;
+          }
+        }
+      }
+    } catch(_) {}
+  }
+  showPicker();
+}
+
+document.getElementById('btn-black').addEventListener('click', () => initGame(1));
+document.getElementById('btn-white').addEventListener('click', () => initGame(2));
+document.getElementById('btn-new').addEventListener('click', () => showPicker());
+document.getElementById('btn-resign').addEventListener('click', () => {
+  if (!playerColor || gameOver) return;
+  gameOver = true; myTurn = false; waiting = false;
+  const winColor = aiColor();
+  const winN = winColor === 1 ? '黑子' : '白子';
+  const {black, white} = countStones(board);
+  statusEl.textContent = `你投降了。${winN}勝（黑 ${black}：白 ${white}）`;
+  document.getElementById('btn-resign').hidden = true;
+  renderBoard(lastMove);
+});
+
+if (window.claude?.hot?.ready) { window.claude.hot.ready(boot); } else { boot(); }
+</script>
